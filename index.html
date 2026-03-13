@@ -578,10 +578,20 @@
             }
         }
 
-        // Close app button
+        // --- BUTTON FIX: Reliable Reset/Close ---
         document.getElementById('btn-close').addEventListener('click', () => {
-            if (tg.close) tg.close();
-            else window.location.reload(); 
+            // Attempt to close the Telegram Mini App natively
+            try {
+                if (tg && typeof tg.close === 'function') {
+                    tg.close();
+                }
+            } catch(e) {}
+            
+            // Fallback: If it doesn't close (e.g. testing in Safari or Desktop), 
+            // force a page reload with a timestamp to instantly reset the UI and fetch new history!
+            setTimeout(() => {
+                window.location.href = window.location.pathname + "?t=" + new Date().getTime();
+            }, 300);
         });
 
         // --- INIT ---
