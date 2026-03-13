@@ -67,16 +67,16 @@
 
         <!-- Main View: Camera Scanner -->
         <div id="main-view" class="flex flex-col items-center justify-center mb-6">
-            <div id="camera-container" class="relative w-full max-w-sm bg-slate-800 rounded-3xl border-2 border-slate-700 overflow-hidden shadow-2xl flex items-center justify-center aspect-square">
+            <div id="camera-container" class="relative w-full max-w-sm bg-slate-800 rounded-3xl border-2 border-slate-700 overflow-hidden shadow-2xl flex items-center justify-center aspect-square pointer-events-none">
                 
                 <!-- Fallback/Loading UI -->
-                <div id="camera-loading" class="absolute inset-0 flex flex-col items-center justify-center bg-slate-800 z-10">
+                <div id="camera-loading" class="absolute inset-0 flex flex-col items-center justify-center bg-slate-800 z-10 pointer-events-auto">
                     <i class="ph ph-spinner animate-spin text-blue-500 text-4xl mb-3"></i>
                     <p class="text-sm font-medium text-slate-400">Accessing Camera...</p>
                 </div>
                 
                 <!-- Safari iOS Permission Fallback Button -->
-                <div id="camera-error" class="hidden absolute inset-0 z-20"></div>
+                <div id="camera-error" class="hidden absolute inset-0 z-20 pointer-events-auto"></div>
 
                 <!-- Actual Camera Feed -->
                 <div id="reader" class="w-full h-full object-cover"></div>
@@ -176,13 +176,14 @@
         #reader__dashboard_section_csr button { display: none !important; }
         #reader__camera_selection { display: none !important; }
         
-        /* THE FIX: Prevents Safari users from tapping the video and pausing the camera! */
-        #reader video { 
+        /* THE FIX: Completely block taps on the video element so Safari/library cannot pause it */
+        #reader { pointer-events: none !important; }
+        #reader * { pointer-events: none !important; }
+        #reader video, #reader canvas { 
             object-fit: cover !important; 
             width: 100% !important; 
             height: 100% !important; 
             border-radius: 1.5rem !important; 
-            pointer-events: none !important; 
         }
     </style>
 
@@ -244,7 +245,7 @@
         setInterval(updateClock, 60000);
         updateClock();
 
-        // --- CUSTOM TOAST NOTIFICATION (Fixes iOS alert freezing) ---
+        // --- CUSTOM TOAST NOTIFICATION ---
         function showCustomToast(message, isSuccess = false) {
             const toast = document.getElementById('custom-toast');
             const icon = document.getElementById('toast-icon');
@@ -398,8 +399,16 @@
                 return;
             }
 
+            // SAFETY FIX: Prevent iOS WebViews from hanging forever on location requests
+            let locationTimeout = setTimeout(() => {
+                document.getElementById('location-checking-overlay').classList.add('hidden');
+                showCustomToast("Location check timed out. Please allow location permissions.");
+                resetScanner();
+            }, 8000);
+
             navigator.geolocation.getCurrentPosition(
                 (position) => {
+                    clearTimeout(locationTimeout);
                     const distance = getDistanceInMeters(
                         position.coords.latitude, 
                         position.coords.longitude, 
@@ -417,19 +426,28 @@
                     }
                 },
                 (error) => {
+                    clearTimeout(locationTimeout);
                     document.getElementById('location-checking-overlay').classList.add('hidden');
                     showCustomToast("GPS Access Denied. Please enable location permissions.");
                     resetScanner();
                 },
-                { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+                { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
             );
         }
 
         function resetScanner() {
-            // We NO LONGER pause/resume the camera. We just lift the processing lock.
-            // This stops the ugly "Scanner Paused" bug on iOS.
             setTimeout(() => {
                 isProcessingScan = false;
+                
+                // SAFETY FIX: If the iOS system alert "Allow Location" paused the video, force it to resume!
+                try {
+                    if (html5QrCode) html5QrCode.resume();
+                } catch(e) {}
+                
+                try {
+                    const video = document.querySelector('#reader video');
+                    if (video && video.paused) video.play();
+                } catch(e) {}
             }, 1500);
         }
 
@@ -449,16 +467,24 @@
         }
 
         function onScanSuccess(decodedText) {
-            // If already processing a scan, ignore everything else
-            if (isProcessingScan) return;
-            isProcessingScan = true; 
-            
-            // Note: We removed the html5QrCode.pause(true) here!
-            
-            if (decodedText === EXPECTED_QR_CODE) {
-                verifyLocationAndProceed();
-            } else {
-                showCustomToast("Invalid QR Code! This is not the HQ QR code.");
+            try {
+                if (isProcessingScan) return;
+                isProcessingScan = true; 
+                
+                // Optional: Vibrate phone instantly on scan to let user know it worked
+                if (tg.HapticFeedback) tg.HapticFeedback.impactOccurred('medium');
+                
+                // Remove hidden spaces from the scanned QR code just in case
+                const cleanText = decodedText.trim();
+                
+                if (cleanText === EXPECTED_QR_CODE) {
+                    verifyLocationAndProceed();
+                } else {
+                    showCustomToast("Invalid QR Code! This is not the HQ QR code.");
+                    resetScanner();
+                }
+            } catch (err) {
+                console.error(err);
                 resetScanner();
             }
         }
