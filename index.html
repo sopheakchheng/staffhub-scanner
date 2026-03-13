@@ -81,11 +81,28 @@
         const EXPECTED_QR_CODE = "STAFFHUB_HQ_01";
 
         const tg = window.Telegram.WebApp;
+        
+        // 1. MUST call ready() for iOS to properly initialize native components
+        tg.ready(); 
         tg.expand();
 
-        const user = tg.initDataUnsafe?.user || { username: "desktop_tester", first_name: "Tester" };
-        document.getElementById('username-display').innerText = `@${user.username || 'unknown'}`;
-        document.getElementById('avatar-initial').innerText = (user.first_name || '?').charAt(0);
+        // 2. Safely get user data (fallback to first_name if username is missing)
+        let isMockUser = false;
+        let user = tg.initDataUnsafe?.user;
+        
+        if (!user) {
+            // If user is null, they likely opened a raw web link instead of the bot button
+            user = { username: "desktop_tester", first_name: "Tester" };
+            isMockUser = true;
+        }
+
+        // Display name: Use @username if it exists, otherwise use their First Name
+        const displayName = user.username ? `@${user.username}` : (user.first_name || "Unknown");
+        document.getElementById('username-display').innerText = displayName;
+        
+        // Avatar Initial
+        const initial = (user.first_name || user.username || "?").charAt(0).toUpperCase();
+        document.getElementById('avatar-initial').innerText = initial;
 
         function updateClock() {
             const now = new Date();
@@ -94,36 +111,41 @@
         setInterval(updateClock, 60000);
         updateClock();
 
-        // 1. Open Telegram's Native QR Scanner
+        // 3. Open Telegram's Native QR Scanner (iOS fixed)
         document.getElementById('btn-open-camera').addEventListener('click', () => {
-            // Check if testing on Desktop, Web, or outside of Telegram
             const platform = tg.platform || "unknown";
             
-            if (!tg.initDataUnsafe?.user || platform === "tdesktop" || platform === "web" || platform === "unknown" || platform === "macos") {
-                 // Simulate for desktop users
+            // Check if testing on Desktop, Web, or outside of Telegram
+            if (isMockUser || platform === "tdesktop" || platform === "web" || platform === "unknown" || platform === "macos") {
                  tg.showAlert("Camera scan is only available on the Telegram mobile app. Simulating a successful scan for testing...");
                  handleValidQR();
                  return;
             }
 
-            // Real Camera Scanner for Mobile Phones
+            // Real Camera Scanner for Mobile Phones (iOS & Android)
             if (tg.showScanQrPopup) {
                 tg.showScanQrPopup({ text: "Scan the official office QR code." }, function(scannedText) {
+                    
+                    // iOS strictness: Always close the scanner first before showing alerts
+                    tg.closeScanQrPopup();
+                    
                     if (scannedText === EXPECTED_QR_CODE) {
-                        tg.closeScanQrPopup();
                         handleValidQR();
-                        return true;
+                        return true; // Return true closes the scanner
                     } else {
-                        tg.showAlert("❌ Invalid QR Code! This is not the official HQ QR code.");
-                        return false; // keeps scanner open to try again
+                        // Small delay ensures the scanner closes smoothly before the alert pops up
+                        setTimeout(() => {
+                            tg.showAlert("❌ Invalid QR Code! This is not the official HQ QR code.");
+                        }, 300);
+                        return true; 
                     }
                 });
             } else {
-                tg.showAlert("QR Scanner is not supported on this device.");
+                tg.showAlert("QR Scanner is not supported on this device's version of Telegram.");
             }
         });
 
-        // 2. Ask user Check In or Check Out after valid scan
+        // 4. Ask user Check In or Check Out after valid scan
         function handleValidQR() {
             tg.showPopup({
                 title: 'QR Verified!',
@@ -139,14 +161,15 @@
             });
         }
 
-        // 3. Save to Firebase
+        // 5. Save to Firebase
         async function saveToFirebase(type) {
             document.getElementById('main-view').classList.add('hidden');
             document.getElementById('loading-view').classList.remove('hidden');
 
             try {
                 await addDoc(collection(db, "scans"), {
-                    name: user.username || "Unknown",
+                    // Save username if they have one, otherwise save their real first name
+                    name: user.username || user.first_name || "Unknown",
                     firstName: user.first_name || "User",
                     time: document.getElementById('clock').innerText,
                     status: "pending", 
