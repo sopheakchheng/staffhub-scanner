@@ -189,8 +189,8 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-        // NOTE: Changed getFirestore to initializeFirestore to enable specific mobile fixes
-        import { initializeFirestore, collection, addDoc, query, where, getDocs } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+        // IMPORT FIX: Added memoryLocalCache to prevent WebView hangs
+        import { initializeFirestore, memoryLocalCache, collection, addDoc, query, where, getDocs } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
         // ==========================================
         // ⚠️ 1. YOUR FIREBASE CONFIGURATION
@@ -204,15 +204,13 @@
             appId: "1:260622679286:web:3ecfcad29d872e204300d7"
         };
 
-        // SAFETY CHECK: Warn if you forget to paste the keys
-        if (firebaseConfig.apiKey === "YOUR_API_KEY") {
-            alert("⚠️ SYSTEM ERROR: You forgot to paste your real Firebase API keys into index.html on GitHub!");
-        }
-
         const app = initializeApp(firebaseConfig);
         
-        // THE TIMEOUT FIX: Force Long Polling to bypass Telegram browser WebSocket restrictions
+        // THE TIMEOUT FIX: 
+        // 1. Force memoryLocalCache bypasses Telegram's restriction on IndexedDB storage.
+        // 2. Force Long Polling bypasses Telegram's strict WebSocket blocking.
         const db = initializeFirestore(app, {
+            localCache: memoryLocalCache(),
             experimentalForceLongPolling: true
         });
 
@@ -280,7 +278,11 @@
         async function loadUserData() {
             try {
                 const q = query(collection(db, "scans"), where("name", "==", userNameId));
-                const snapshot = await getDocs(q);
+                
+                // Add a timeout to the initial fetch as well so it doesn't block the camera from loading
+                const fetchPromise = getDocs(q);
+                const fetchTimeout = new Promise((_, reject) => setTimeout(() => reject(new Error("FetchTimeout")), 5000));
+                const snapshot = await Promise.race([fetchPromise, fetchTimeout]);
                 
                 let allScans = snapshot.docs.map(doc => doc.data());
                 allScans.sort((a, b) => b.timestamp - a.timestamp); // Newest first
@@ -313,7 +315,7 @@
                 
             } catch (error) {
                 console.error("Error fetching data:", error);
-                document.getElementById('history-list').innerHTML = `<p class="text-xs text-red-400 text-center">Failed to load history.</p>`;
+                document.getElementById('history-list').innerHTML = `<p class="text-xs text-red-400 text-center">History temporarily unavailable.</p>`;
             }
         }
 
@@ -568,9 +570,9 @@
                 document.getElementById('loading-view').classList.add('hidden');
                 
                 if (error.message === "Timeout") {
-                    showCustomToast("Network Timeout: Check your internet connection or VPN.");
+                    showCustomToast("Network Timeout: Try turning off your VPN or connect to Wi-Fi.");
                 } else {
-                    showCustomToast("Failed to save! Check your Firebase API Keys.");
+                    showCustomToast("Database Error: Is your Firebase test mode expired?");
                 }
                 resetScanner();
             }
