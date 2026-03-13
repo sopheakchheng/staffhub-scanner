@@ -4,31 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>StaffHub Scanner</title>
-    
-    <!-- 1. Tailwind CSS via CDN (No terminal needed) -->
     <script src="https://cdn.tailwindcss.com"></script>
-    
-    <!-- 2. Telegram Web App Script -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    
-    <!-- 3. Icons via CDN -->
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
-
-    <style>
-        /* Custom scanner animation */
-        @keyframes scan {
-            0% { top: 0; }
-            50% { top: 100%; }
-            100% { top: 0; }
-        }
-        .scanner-line {
-            animation: scan 3s infinite linear;
-        }
-    </style>
 </head>
 <body class="bg-slate-900 text-white font-sans h-screen w-full overflow-hidden flex flex-col">
 
-    <!-- UI Container -->
     <div id="app-container" class="flex-1 flex flex-col p-6 pt-10 relative">
         
         <!-- Header -->
@@ -39,37 +20,36 @@
             <p id="clock" class="text-slate-400 font-medium text-sm">--:--</p>
         </div>
 
-        <!-- User Info Card -->
+        <!-- User Info -->
         <div class="bg-slate-800 border border-slate-700 rounded-2xl p-4 mb-8 flex items-center space-x-3">
-            <div id="avatar-initial" class="w-10 h-10 bg-gradient-to-tr from-blue-500 to-indigo-500 rounded-full flex items-center justify-center font-bold text-white shadow-lg">
-                ?
-            </div>
+            <div id="avatar-initial" class="w-10 h-10 bg-gradient-to-tr from-blue-500 to-indigo-500 rounded-full flex items-center justify-center font-bold text-white shadow-lg">?</div>
             <div>
                 <p class="text-xs text-slate-400">Checking in as</p>
                 <p id="username-display" class="font-bold">Loading...</p>
             </div>
         </div>
 
-        <!-- Main Scanner Area -->
-        <div id="scan-view" class="flex-1 flex flex-col items-center">
-            <h2 class="text-2xl font-bold mb-2">Scan HQ QR</h2>
-            <p class="text-slate-400 text-center text-sm mb-8 px-4">Point your camera at the office QR code.</p>
-            
-            <div class="relative w-64 h-64 bg-slate-800 rounded-3xl border-2 border-slate-700 overflow-hidden shadow-2xl flex items-center justify-center mb-8">
-                <div class="absolute w-full h-1 bg-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.8)] scanner-line"></div>
-                <i class="ph ph-camera text-slate-600 opacity-50 text-5xl"></i>
+        <!-- Main View: Tap to Scan -->
+        <div id="main-view" class="flex-1 flex flex-col items-center justify-center">
+            <div class="w-32 h-32 bg-blue-500/10 rounded-full flex items-center justify-center mb-6">
+                <i class="ph ph-qr-code text-blue-500 text-6xl"></i>
             </div>
-
-            <!-- Action Buttons -->
-            <button id="btn-checkin" class="w-full max-w-xs py-4 mb-4 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-bold flex items-center justify-center transition-colors">
-                <i class="ph-bold ph-sign-in mr-2 text-xl"></i> Check In
-            </button>
-            <button id="btn-checkout" class="w-full max-w-xs py-4 bg-slate-800 hover:bg-slate-700 text-white rounded-2xl font-bold flex items-center justify-center transition-colors">
-                <i class="ph-bold ph-sign-out mr-2 text-xl"></i> Check Out
+            <h2 class="text-2xl font-bold mb-2">Office Check-In</h2>
+            <p class="text-slate-400 text-center text-sm mb-12 px-4">Tap the button below to open your camera and scan the HQ QR code.</p>
+            
+            <button id="btn-open-camera" class="w-full max-w-xs py-5 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-bold flex items-center justify-center text-lg shadow-lg shadow-blue-500/30 transition-transform active:scale-95">
+                <i class="ph-bold ph-camera mr-2 text-2xl"></i> Open Camera
             </button>
         </div>
 
-        <!-- Success View (Hidden by default) -->
+        <!-- Loading View (When saving to Firebase) -->
+        <div id="loading-view" class="hidden flex-1 flex flex-col items-center justify-center">
+            <i class="ph ph-spinner animate-spin text-blue-500 text-6xl mb-4"></i>
+            <h2 class="text-xl font-bold">Saving to Cloud...</h2>
+            <p class="text-slate-400 text-sm mt-2">Please wait</p>
+        </div>
+
+        <!-- Success View -->
         <div id="success-view" class="hidden flex-1 flex flex-col items-center justify-center">
             <div class="w-24 h-24 bg-emerald-500/20 rounded-full flex items-center justify-center mb-6">
                 <i class="ph-fill ph-check-circle text-emerald-500 text-6xl"></i>
@@ -80,41 +60,33 @@
         </div>
     </div>
 
-    <!-- 4. Firebase Logic via ES Modules (No Node.js needed!) -->
     <script type="module">
-        // Import Firebase directly from the web
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
         import { getFirestore, collection, addDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
-        // ⚠️ REPLACE WITH YOUR FIREBASE CONFIG
+        // ⚠️ REPLACE WITH YOUR REAL FIREBASE CONFIG AGAIN!
         const firebaseConfig = {
-        apiKey: "AIzaSyDFN_q9cYWCAXRyPhhhgTSLfcROvhMV_aY",
-        authDomain: "staff-hub-app-763bc.firebaseapp.com",
-        projectId: "staff-hub-app-763bc",
-        storageBucket: "staff-hub-app-763bc.firebasestorage.app",
-        messagingSenderId: "260622679286",
-        appId: "1:260622679286:web:3ecfcad29d872e204300d7"
+            apiKey: "YOUR_API_KEY",
+            authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+            projectId: "YOUR_PROJECT_ID",
+            storageBucket: "YOUR_PROJECT_ID.appspot.com",
+            messagingSenderId: "YOUR_SENDER_ID",
+            appId: "YOUR_APP_ID"
         };
 
-        // Initialize Firebase
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
 
-        // Telegram Web App Data
+        // 🔒 THE SECRET QR CODE STRING
+        const EXPECTED_QR_CODE = "STAFFHUB_HQ_01";
+
         const tg = window.Telegram.WebApp;
-        tg.expand(); // Make it full screen in Telegram
+        tg.expand();
 
-        // Get user data (fallback for desktop testing)
-        const user = tg.initDataUnsafe?.user || { 
-            username: "desktop_tester", 
-            first_name: "Tester" 
-        };
-
-        // Update UI with User Info
+        const user = tg.initDataUnsafe?.user || { username: "desktop_tester", first_name: "Tester" };
         document.getElementById('username-display').innerText = `@${user.username || 'unknown'}`;
         document.getElementById('avatar-initial').innerText = (user.first_name || '?').charAt(0);
 
-        // Live Clock function
         function updateClock() {
             const now = new Date();
             document.getElementById('clock').innerText = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -122,44 +94,71 @@
         setInterval(updateClock, 60000);
         updateClock();
 
-        // Check-in / Check-out Logic
-        async function handleScan(type) {
-            // 1. Change button to loading state
-            const btn = document.getElementById(`btn-${type.replace('-', '')}`);
-            const originalText = btn.innerHTML;
-            btn.innerHTML = `<i class="ph ph-spinner animate-spin mr-2 text-xl"></i> Saving...`;
-            btn.disabled = true;
+        // 1. Open Telegram's Native QR Scanner
+        document.getElementById('btn-open-camera').addEventListener('click', () => {
+            // If testing on desktop where camera isn't available, simulate it
+            if (!tg.isExpanded && !tg.initDataUnsafe?.user) {
+                 handleValidQR();
+                 return;
+            }
+
+            tg.showScanQrPopup({ text: "Scan the official office QR code." }, function(scannedText) {
+                if (scannedText === EXPECTED_QR_CODE) {
+                    tg.closeScanQrPopup();
+                    handleValidQR();
+                    return true;
+                } else {
+                    tg.showAlert("❌ Invalid QR Code! This is not the official HQ QR code.");
+                    return false; // keeps scanner open to try again
+                }
+            });
+        });
+
+        // 2. Ask user Check In or Check Out after valid scan
+        function handleValidQR() {
+            tg.showPopup({
+                title: 'QR Verified!',
+                message: 'Are you checking IN or checking OUT?',
+                buttons: [
+                    { id: 'check-in', type: 'default', text: 'Check In' },
+                    { id: 'check-out', type: 'destructive', text: 'Check Out' }
+                ]
+            }, function(buttonId) {
+                if (buttonId) {
+                    saveToFirebase(buttonId);
+                }
+            });
+        }
+
+        // 3. Save to Firebase
+        async function saveToFirebase(type) {
+            document.getElementById('main-view').classList.add('hidden');
+            document.getElementById('loading-view').classList.remove('hidden');
 
             try {
-                // 2. Save directly to Firebase Firestore
                 await addDoc(collection(db, "scans"), {
                     name: user.username || "Unknown",
                     firstName: user.first_name || "User",
                     time: document.getElementById('clock').innerText,
-                    status: "pending", // Manager Dashboard will approve this
+                    status: "pending", 
                     location: "HQ Zone",
                     type: type,
                     timestamp: Date.now()
                 });
 
-                // 3. Show Success Screen
-                document.getElementById('scan-view').classList.add('hidden');
+                document.getElementById('loading-view').classList.add('hidden');
                 document.getElementById('success-view').classList.remove('hidden');
                 document.getElementById('success-message').innerText = `Your ${type.replace('-', ' ')} was recorded.`;
-                
-                // Trigger Telegram haptic feedback if on phone
                 tg.HapticFeedback.notificationOccurred('success');
+                
             } catch (error) {
-                console.error("Error saving to Firebase:", error);
-                alert("Failed to connect to database. Check your internet.");
-                btn.innerHTML = originalText;
-                btn.disabled = false;
+                console.error("Firebase Error:", error);
+                document.getElementById('loading-view').classList.add('hidden');
+                document.getElementById('main-view').classList.remove('hidden');
+                tg.showAlert("Failed to save. Did you update your Firebase Firestore rules to allow writes?");
             }
         }
 
-        // Attach Event Listeners
-        document.getElementById('btn-checkin').addEventListener('click', () => handleScan('check-in'));
-        document.getElementById('btn-checkout').addEventListener('click', () => handleScan('check-out'));
         document.getElementById('btn-close').addEventListener('click', () => tg.close());
     </script>
 </body>
