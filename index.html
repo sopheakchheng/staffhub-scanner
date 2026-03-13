@@ -96,22 +96,31 @@
 
         // 1. Open Telegram's Native QR Scanner
         document.getElementById('btn-open-camera').addEventListener('click', () => {
-            // If testing on desktop where camera isn't available, simulate it
-            if (!tg.isExpanded && !tg.initDataUnsafe?.user) {
+            // Check if testing on Desktop, Web, or outside of Telegram
+            const platform = tg.platform || "unknown";
+            
+            if (!tg.initDataUnsafe?.user || platform === "tdesktop" || platform === "web" || platform === "unknown" || platform === "macos") {
+                 // Simulate for desktop users
+                 tg.showAlert("Camera scan is only available on the Telegram mobile app. Simulating a successful scan for testing...");
                  handleValidQR();
                  return;
             }
 
-            tg.showScanQrPopup({ text: "Scan the official office QR code." }, function(scannedText) {
-                if (scannedText === EXPECTED_QR_CODE) {
-                    tg.closeScanQrPopup();
-                    handleValidQR();
-                    return true;
-                } else {
-                    tg.showAlert("❌ Invalid QR Code! This is not the official HQ QR code.");
-                    return false; // keeps scanner open to try again
-                }
-            });
+            // Real Camera Scanner for Mobile Phones
+            if (tg.showScanQrPopup) {
+                tg.showScanQrPopup({ text: "Scan the official office QR code." }, function(scannedText) {
+                    if (scannedText === EXPECTED_QR_CODE) {
+                        tg.closeScanQrPopup();
+                        handleValidQR();
+                        return true;
+                    } else {
+                        tg.showAlert("❌ Invalid QR Code! This is not the official HQ QR code.");
+                        return false; // keeps scanner open to try again
+                    }
+                });
+            } else {
+                tg.showAlert("QR Scanner is not supported on this device.");
+            }
         });
 
         // 2. Ask user Check In or Check Out after valid scan
@@ -163,4 +172,3 @@
     </script>
 </body>
 </html>
-
