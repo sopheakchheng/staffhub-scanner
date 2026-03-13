@@ -189,7 +189,8 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-        import { getFirestore, collection, addDoc, query, where, getDocs } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+        // NOTE: Changed getFirestore to initializeFirestore to enable specific mobile fixes
+        import { initializeFirestore, collection, addDoc, query, where, getDocs } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
         // ==========================================
         // ⚠️ 1. YOUR FIREBASE CONFIGURATION
@@ -203,8 +204,17 @@
             appId: "1:260622679286:web:3ecfcad29d872e204300d7"
         };
 
+        // SAFETY CHECK: Warn if you forget to paste the keys
+        if (firebaseConfig.apiKey === "YOUR_API_KEY") {
+            alert("⚠️ SYSTEM ERROR: You forgot to paste your real Firebase API keys into index.html on GitHub!");
+        }
+
         const app = initializeApp(firebaseConfig);
-        const db = getFirestore(app);
+        
+        // THE TIMEOUT FIX: Force Long Polling to bypass Telegram browser WebSocket restrictions
+        const db = initializeFirestore(app, {
+            experimentalForceLongPolling: true
+        });
 
         // ==========================================
         // 🔒 2. SECURITY & MASTER CONFIGURATION
@@ -558,7 +568,7 @@
                 document.getElementById('loading-view').classList.add('hidden');
                 
                 if (error.message === "Timeout") {
-                    showCustomToast("Network Timeout: Check your internet connection.");
+                    showCustomToast("Network Timeout: Check your internet connection or VPN.");
                 } else {
                     showCustomToast("Failed to save! Check your Firebase API Keys.");
                 }
