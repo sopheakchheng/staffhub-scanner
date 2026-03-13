@@ -30,7 +30,13 @@
     <!-- Robust HTML5 Camera Engine -->
     <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
 </head>
-<body class="bg-slate-900 text-white font-sans h-screen w-full overflow-hidden flex flex-col">
+<body class="bg-slate-900 text-white font-sans h-screen w-full overflow-hidden flex flex-col relative">
+
+    <!-- CUSTOM TOAST NOTIFICATION (Replaces buggy iOS alerts) -->
+    <div id="custom-toast" class="fixed top-4 left-4 right-4 bg-red-600 text-white px-5 py-4 rounded-2xl shadow-2xl z-[100] flex items-center transition-transform duration-300" style="transform: translateY(-150%);">
+        <i id="toast-icon" class="ph-fill ph-warning-circle text-2xl mr-3 shrink-0"></i>
+        <span id="toast-message" class="text-sm font-bold leading-tight">Error</span>
+    </div>
 
     <div id="app-container" class="flex-1 flex flex-col p-6 pt-8 relative overflow-y-auto">
         
@@ -70,9 +76,7 @@
                 </div>
                 
                 <!-- Safari iOS Permission Fallback Button -->
-                <div id="camera-error" class="hidden absolute inset-0 z-20">
-                    <!-- JS inserts button here if auto-play is blocked -->
-                </div>
+                <div id="camera-error" class="hidden absolute inset-0 z-20"></div>
 
                 <!-- Actual Camera Feed -->
                 <div id="reader" class="w-full h-full object-cover"></div>
@@ -166,12 +170,20 @@
     <style>
         @keyframes scan { 0% { top: 0; } 50% { top: 100%; } 100% { top: 0; } }
         .scanner-line { animation: scan 2.5s infinite linear; }
+        
         /* Hide html5-qrcode default UI buttons */
         #reader__dashboard_section_csr span, #reader__dashboard_section_swaplink { display: none !important; }
         #reader__dashboard_section_csr button { display: none !important; }
         #reader__camera_selection { display: none !important; }
-        /* Fix Safari iOS Camera Stretch */
-        #reader video { object-fit: cover !important; width: 100% !important; height: 100% !important; border-radius: 1.5rem !important; }
+        
+        /* THE FIX: Prevents Safari users from tapping the video and pausing the camera! */
+        #reader video { 
+            object-fit: cover !important; 
+            width: 100% !important; 
+            height: 100% !important; 
+            border-radius: 1.5rem !important; 
+            pointer-events: none !important; 
+        }
     </style>
 
     <script type="module">
@@ -188,7 +200,7 @@
             storageBucket: "staff-hub-app-763bc.firebasestorage.app",
             messagingSenderId: "260622679286",
             appId: "1:260622679286:web:3ecfcad29d872e204300d7"
-        };;
+        };
 
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
@@ -213,7 +225,7 @@
         if (tg.expand) tg.expand();
 
         let user = tg.initDataUnsafe?.user;
-        if (!user) user = { username: "safari_user", first_name: "Safari" }; // Fallback for standard browsers
+        if (!user) user = { username: "safari_user", first_name: "Safari" };
 
         const userNameId = user.username || user.first_name || "Unknown";
         document.getElementById('username-display').innerText = user.username ? `@${user.username}` : user.first_name;
@@ -232,7 +244,28 @@
         setInterval(updateClock, 60000);
         updateClock();
 
-        // --- 2. FETCH FIREBASE DATA (Determine Action & Build History) ---
+        // --- CUSTOM TOAST NOTIFICATION (Fixes iOS alert freezing) ---
+        function showCustomToast(message, isSuccess = false) {
+            const toast = document.getElementById('custom-toast');
+            const icon = document.getElementById('toast-icon');
+            document.getElementById('toast-message').innerText = message;
+            
+            if (isSuccess) {
+                toast.className = "fixed top-4 left-4 right-4 bg-emerald-600 text-white px-5 py-4 rounded-2xl shadow-2xl z-[100] flex items-center transition-transform duration-300";
+                icon.className = "ph-fill ph-check-circle text-2xl mr-3 shrink-0";
+            } else {
+                toast.className = "fixed top-4 left-4 right-4 bg-red-600 text-white px-5 py-4 rounded-2xl shadow-2xl z-[100] flex items-center transition-transform duration-300";
+                icon.className = "ph-fill ph-warning-circle text-2xl mr-3 shrink-0";
+            }
+
+            // Slide down
+            setTimeout(() => toast.style.transform = 'translateY(0)', 10);
+            
+            // Slide up after 3 seconds
+            setTimeout(() => toast.style.transform = 'translateY(-150%)', 3500);
+        }
+
+        // --- 2. FETCH FIREBASE DATA ---
         async function loadUserData() {
             try {
                 const q = query(collection(db, "scans"), where("name", "==", userNameId));
@@ -241,7 +274,6 @@
                 let allScans = snapshot.docs.map(doc => doc.data());
                 allScans.sort((a, b) => b.timestamp - a.timestamp); // Newest first
 
-                // Determine Today's Action (Check-in or Check-out)
                 const todayStart = new Date();
                 todayStart.setHours(0, 0, 0, 0);
                 const todaysScans = allScans.filter(s => s.timestamp >= todayStart.getTime());
@@ -264,7 +296,6 @@
                     badge.className = 'inline-flex items-center px-2 py-1 rounded-md bg-blue-500/20 text-blue-400 font-bold text-xs mt-1';
                 }
 
-                // Render History (Last 7 Days)
                 const oneWeekAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
                 const weekScans = allScans.filter(s => s.timestamp >= oneWeekAgo);
                 renderHistory(weekScans);
@@ -318,7 +349,7 @@
                 html5QrCode = new Html5Qrcode("reader");
             }
 
-            const config = { fps: 10, qrbox: { width: 250, height: 250 }, aspectRatio: 1.0 };
+            const config = { fps: 10, qrbox: { width: 250, height: 250 }, aspectRatio: 1.0, disableFlip: false };
             
             html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess)
                 .then(() => {
@@ -326,11 +357,10 @@
                     document.getElementById('scanner-overlay-box').classList.remove('hidden');
                 })
                 .catch((err) => {
-                    console.error("Camera start blocked by browser:", err);
+                    console.error("Camera start blocked:", err);
                     document.getElementById('camera-loading').classList.add('hidden');
                     document.getElementById('scanner-overlay-box').classList.add('hidden');
                     
-                    // Safari Fallback Button
                     const errBox = document.getElementById('camera-error');
                     errBox.classList.remove('hidden');
                     errBox.innerHTML = `
@@ -346,19 +376,8 @@
         }
 
         // --- 4. HANDLE SCAN LOGIC & GPS VERIFICATION ---
-        function showAlert(msg, callback) {
-            if (tg.showAlert) {
-                if (callback) tg.showAlert(msg, callback);
-                else tg.showAlert(msg);
-            } else {
-                alert(msg);
-                if (callback) callback();
-            }
-        }
-
-        // Calculate distance between two GPS coordinates in meters (Haversine formula)
         function getDistanceInMeters(lat1, lon1, lat2, lon2) {
-            const R = 6371e3; // Earth radius in meters
+            const R = 6371e3;
             const rad = Math.PI / 180;
             const dLat = (lat2 - lat1) * rad;
             const dLon = (lon2 - lon1) * rad;
@@ -374,7 +393,7 @@
 
             if (!navigator.geolocation) {
                 document.getElementById('location-checking-overlay').classList.add('hidden');
-                showAlert("Geolocation is not supported by your device. Cannot verify location.");
+                showCustomToast("Geolocation is not supported. Cannot verify location.");
                 resetScanner();
                 return;
             }
@@ -391,17 +410,15 @@
                     document.getElementById('location-checking-overlay').classList.add('hidden');
 
                     if (distance <= OFFICE_LOCATION.radius_meters) {
-                        // GPS Validation Passed!
                         processValidScan();
                     } else {
-                        // GPS Validation Failed (They are too far away)
-                        showAlert(`❌ Security Alert: You are ${Math.round(distance)} meters away. You must be at the office to check in.`);
+                        showCustomToast(`You are ${Math.round(distance)}m away. You must be at the office to check in.`);
                         resetScanner();
                     }
                 },
                 (error) => {
                     document.getElementById('location-checking-overlay').classList.add('hidden');
-                    showAlert("❌ GPS Access Denied. Please enable location permissions in your phone settings to verify your check-in.");
+                    showCustomToast("GPS Access Denied. Please enable location permissions.");
                     resetScanner();
                 },
                 { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
@@ -409,15 +426,16 @@
         }
 
         function resetScanner() {
+            // We NO LONGER pause/resume the camera. We just lift the processing lock.
+            // This stops the ugly "Scanner Paused" bug on iOS.
             setTimeout(() => {
                 isProcessingScan = false;
-                html5QrCode.resume();
-            }, 1000);
+            }, 1500);
         }
 
         function processValidScan() {
             if (pendingAction === 'completed') {
-                showAlert("You have already checked in and checked out for today!");
+                showCustomToast("You have already checked in and checked out for today!");
                 resetScanner();
                 return;
             }
@@ -431,19 +449,16 @@
         }
 
         function onScanSuccess(decodedText) {
+            // If already processing a scan, ignore everything else
             if (isProcessingScan) return;
+            isProcessingScan = true; 
+            
+            // Note: We removed the html5QrCode.pause(true) here!
             
             if (decodedText === EXPECTED_QR_CODE) {
-                isProcessingScan = true;
-                html5QrCode.pause(true); 
-                
-                // Triggers the new GPS Geofence Check
                 verifyLocationAndProceed();
-                
             } else {
-                isProcessingScan = true;
-                html5QrCode.pause(true);
-                showAlert("❌ Invalid QR Code! This is not the official HQ QR code.");
+                showCustomToast("Invalid QR Code! This is not the HQ QR code.");
                 resetScanner();
             }
         }
@@ -459,15 +474,14 @@
             saveToFirebase('check-out');
         });
 
-        // --- 5. SAVE TO FIREBASE (WITH TIMEOUT SAFETY) ---
+        // --- 5. SAVE TO FIREBASE ---
         async function saveToFirebase(type) {
             document.getElementById('loading-view').classList.remove('hidden');
 
             const now = new Date();
             const timeStr = document.getElementById('clock').innerText;
             
-            // Calculate if Late (Only applies to check-ins)
-            let status = "completed"; // Default for checkout
+            let status = "completed";
             if (type === 'check-in') {
                 status = "on-time";
                 const hour = now.getHours();
@@ -478,7 +492,6 @@
             }
 
             try {
-                // Feature: 10-Second Firebase Timeout Protection
                 const savePromise = addDoc(collection(db, "scans"), {
                     name: userNameId,
                     firstName: user.first_name || "User",
@@ -493,10 +506,8 @@
                     setTimeout(() => reject(new Error("Timeout")), 10000)
                 );
                 
-                // This waits for whichever finishes first: The save, or the 10s timer
                 await Promise.race([savePromise, timeoutPromise]);
 
-                // Update Success UI
                 document.getElementById('result-type').innerText = type.replace('-', ' ');
                 document.getElementById('result-time').innerText = timeStr;
                 
@@ -508,12 +519,9 @@
                     statusEl.className = "font-bold text-emerald-400 px-2 py-0.5 bg-emerald-400/10 rounded uppercase text-xs tracking-wider";
                 }
 
-                // Safely stop the camera engine so it doesn't crash the UI transition
                 try {
                     await html5QrCode.stop();
-                } catch(e) { 
-                    console.warn("Camera stopped silently."); 
-                }
+                } catch(e) {}
 
                 document.getElementById('loading-view').classList.add('hidden');
                 document.getElementById('success-view').classList.remove('hidden');
@@ -524,9 +532,9 @@
                 document.getElementById('loading-view').classList.add('hidden');
                 
                 if (error.message === "Timeout") {
-                    showAlert("❌ Network Timeout: Check your internet connection and try again.");
+                    showCustomToast("Network Timeout: Check your internet connection.");
                 } else {
-                    showAlert("❌ Failed to save! Did you forget to paste your Firebase API Keys into this new code?");
+                    showCustomToast("Failed to save! Check your Firebase API Keys.");
                 }
                 resetScanner();
             }
@@ -535,11 +543,10 @@
         // Close app button
         document.getElementById('btn-close').addEventListener('click', () => {
             if (tg.close) tg.close();
-            else window.location.reload(); // Fallback for Safari
+            else window.location.reload(); 
         });
 
         // --- INIT ---
-        // Load data first to determine Check-In vs Check-Out, then start camera!
         loadUserData().then(() => {
             startScanner();
         });
