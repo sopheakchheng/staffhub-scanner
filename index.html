@@ -7,13 +7,14 @@
     <!-- Auto Cache-Buster: Makes the link unique for EVERY access -->
     <script>
         (function() {
-            var currentUrl = new URL(window.location.href);
-            // If the URL doesn't have a unique timestamp, add one and reload
-            if (!currentUrl.searchParams.has('t')) {
-                currentUrl.searchParams.set('t', new Date().getTime());
-                // replace() ensures we don't break the Android/iOS back button
-                window.location.replace(currentUrl.toString());
-            }
+            try {
+                var currentUrl = new URL(window.location.href);
+                // ONLY run on GitHub Pages to prevent breaking the preview window!
+                if (currentUrl.hostname.includes('github.io') && !currentUrl.searchParams.has('t')) {
+                    currentUrl.searchParams.set('t', new Date().getTime());
+                    window.location.replace(currentUrl.toString());
+                }
+            } catch(e) {}
         })();
     </script>
 
@@ -124,14 +125,15 @@
                 <div class="absolute inset-0 border-4 border-blue-500/30 rounded-full animate-ping"></div>
                 <i class="ph-fill ph-map-pin text-blue-500 text-4xl"></i>
             </div>
-            <h2 className="text-2xl font-bold text-white mb-2">Verifying Location</h2>
-            <p className="text-slate-400 text-sm text-center">Checking if you are within the allowed office radius...</p>
+            <h2 class="text-2xl font-bold text-white mb-2">Verifying Location</h2>
+            <p class="text-slate-400 text-sm text-center">Checking if you are within the allowed office radius...</p>
         </div>
 
         <!-- Loading View (Saving to Firebase) -->
-        <div id="loading-view" class="hidden absolute inset-0 bg-slate-900 z-50 flex flex-col items-center justify-center">
+        <div id="loading-view" class="hidden absolute inset-0 bg-slate-900 z-50 flex flex-col items-center justify-center p-6 text-center">
             <i class="ph ph-spinner animate-spin text-blue-500 text-6xl mb-4"></i>
             <h2 class="text-xl font-bold">Saving to Cloud...</h2>
+            <p class="text-slate-400 text-sm mt-2">Please do not close the app.</p>
         </div>
 
         <!-- Success View -->
@@ -176,7 +178,9 @@
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
         import { getFirestore, collection, addDoc, query, where, getDocs } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
-        // ⚠️ REPLACE WITH YOUR REAL FIREBASE CONFIG AGAIN!
+        // ==========================================
+        // ⚠️ 1. YOUR FIREBASE CONFIGURATION
+        // ==========================================
         const firebaseConfig = {
             apiKey: "AIzaSyDFN_q9cYWCAXRyPhhhgTSLfcROvhMV_aY",
             authDomain: "staff-hub-app-763bc.firebaseapp.com",
@@ -190,16 +194,16 @@
         const db = getFirestore(app);
 
         // ==========================================
-        // 🔒 SECURITY CONFIGURATION
+        // 🔒 2. SECURITY & MASTER CONFIGURATION
         // ==========================================
         const EXPECTED_QR_CODE = "STAFFHUB_HQ_01";
-        const WORK_START_HOUR = 9; // 09:00 AM
+        const WORK_START_HOUR = 9; // 09:00 AM is late
         
         // Change these to your exact office coordinates (Latitude, Longitude)
         const OFFICE_LOCATION = {
-            lat: 11.5564, // Example: Phnom Penh
-            lng: 104.9282,
-            radius_meters: 100 // Maximum allowed distance from office
+            lat: 11.5564,     // <--- Put your latitude here
+            lng: 104.9282,    // <--- Put your longitude here
+            radius_meters: 100 // Maximum allowed distance from office in meters
         };
         // ==========================================
 
@@ -342,9 +346,14 @@
         }
 
         // --- 4. HANDLE SCAN LOGIC & GPS VERIFICATION ---
-        function showAlert(msg) {
-            if (tg.showAlert) tg.showAlert(msg);
-            else alert(msg);
+        function showAlert(msg, callback) {
+            if (tg.showAlert) {
+                if (callback) tg.showAlert(msg, callback);
+                else tg.showAlert(msg);
+            } else {
+                alert(msg);
+                if (callback) callback();
+            }
         }
 
         // Calculate distance between two GPS coordinates in meters (Haversine formula)
@@ -450,7 +459,7 @@
             saveToFirebase('check-out');
         });
 
-        // --- 5. SAVE TO FIREBASE & CALCULATE STATUS ---
+        // --- 5. SAVE TO FIREBASE (WITH TIMEOUT SAFETY) ---
         async function saveToFirebase(type) {
             document.getElementById('loading-view').classList.remove('hidden');
 
@@ -469,7 +478,8 @@
             }
 
             try {
-                await addDoc(collection(db, "scans"), {
+                // Feature: 10-Second Firebase Timeout Protection
+                const savePromise = addDoc(collection(db, "scans"), {
                     name: userNameId,
                     firstName: user.first_name || "User",
                     time: timeStr,
@@ -478,6 +488,13 @@
                     type: type,
                     timestamp: now.getTime()
                 });
+                
+                const timeoutPromise = new Promise((_, reject) => 
+                    setTimeout(() => reject(new Error("Timeout")), 10000)
+                );
+                
+                // This waits for whichever finishes first: The save, or the 10s timer
+                await Promise.race([savePromise, timeoutPromise]);
 
                 // Update Success UI
                 document.getElementById('result-type').innerText = type.replace('-', ' ');
@@ -491,8 +508,13 @@
                     statusEl.className = "font-bold text-emerald-400 px-2 py-0.5 bg-emerald-400/10 rounded uppercase text-xs tracking-wider";
                 }
 
-                // Stop camera and show success
-                html5QrCode.stop();
+                // Safely stop the camera engine so it doesn't crash the UI transition
+                try {
+                    await html5QrCode.stop();
+                } catch(e) { 
+                    console.warn("Camera stopped silently."); 
+                }
+
                 document.getElementById('loading-view').classList.add('hidden');
                 document.getElementById('success-view').classList.remove('hidden');
                 if (tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
@@ -500,7 +522,12 @@
             } catch (error) {
                 console.error("Firebase Error:", error);
                 document.getElementById('loading-view').classList.add('hidden');
-                showAlert("Failed to save. Did you update your Firebase Firestore rules to allow writes?");
+                
+                if (error.message === "Timeout") {
+                    showAlert("❌ Network Timeout: Check your internet connection and try again.");
+                } else {
+                    showAlert("❌ Failed to save! Did you forget to paste your Firebase API Keys into this new code?");
+                }
                 resetScanner();
             }
         }
