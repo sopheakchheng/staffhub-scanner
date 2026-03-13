@@ -7,62 +7,145 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <!-- Robust HTML5 Camera Engine -->
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
 </head>
 <body class="bg-slate-900 text-white font-sans h-screen w-full overflow-hidden flex flex-col">
 
-    <div id="app-container" class="flex-1 flex flex-col p-6 pt-10 relative">
+    <div id="app-container" class="flex-1 flex flex-col p-6 pt-8 relative overflow-y-auto">
         
         <!-- Header -->
-        <div class="flex justify-between items-center mb-10">
+        <div class="flex justify-between items-center mb-6">
             <h1 class="text-xl font-bold flex items-center">
-                <i class="ph-fill ph-telegram-logo text-blue-400 mr-2 text-2xl"></i> Mini App
+                <i class="ph-fill ph-telegram-logo text-blue-400 mr-2 text-2xl"></i> StaffHub
             </h1>
             <p id="clock" class="text-slate-400 font-medium text-sm">--:--</p>
         </div>
 
-        <!-- User Info -->
-        <div class="bg-slate-800 border border-slate-700 rounded-2xl p-4 mb-8 flex items-center space-x-3">
-            <div id="avatar-initial" class="w-10 h-10 bg-gradient-to-tr from-blue-500 to-indigo-500 rounded-full flex items-center justify-center font-bold text-white shadow-lg">?</div>
-            <div>
-                <p class="text-xs text-slate-400">Checking in as</p>
-                <p id="username-display" class="font-bold">Loading...</p>
+        <!-- User Info & Current Status -->
+        <div class="bg-slate-800 border border-slate-700 rounded-2xl p-4 mb-6 flex items-center justify-between shadow-lg">
+            <div class="flex items-center space-x-3">
+                <div id="avatar-initial" class="w-10 h-10 bg-gradient-to-tr from-blue-500 to-indigo-500 rounded-full flex items-center justify-center font-bold text-white shadow-md">?</div>
+                <div>
+                    <p class="text-xs text-slate-400">Welcome back,</p>
+                    <p id="username-display" class="font-bold truncate max-w-[120px]">Loading...</p>
+                </div>
+            </div>
+            <div class="text-right">
+                <p class="text-[10px] uppercase tracking-wider text-slate-400">Next Action</p>
+                <div id="current-action-badge" class="inline-flex items-center px-2 py-1 rounded-md bg-slate-700 text-slate-300 font-bold text-xs mt-1 animate-pulse">
+                    Loading...
+                </div>
             </div>
         </div>
 
-        <!-- Main View: Tap to Scan -->
-        <div id="main-view" class="flex-1 flex flex-col items-center justify-center">
-            <div class="w-32 h-32 bg-blue-500/10 rounded-full flex items-center justify-center mb-6">
-                <i class="ph ph-qr-code text-blue-500 text-6xl"></i>
+        <!-- Main View: Camera Scanner -->
+        <div id="main-view" class="flex flex-col items-center justify-center mb-6">
+            <div id="camera-container" class="relative w-full max-w-sm bg-slate-800 rounded-3xl border-2 border-slate-700 overflow-hidden shadow-2xl flex items-center justify-center aspect-square">
+                
+                <!-- Fallback/Loading UI -->
+                <div id="camera-loading" class="absolute inset-0 flex flex-col items-center justify-center bg-slate-800 z-10">
+                    <i class="ph ph-spinner animate-spin text-blue-500 text-4xl mb-3"></i>
+                    <p class="text-sm font-medium text-slate-400">Accessing Camera...</p>
+                </div>
+                
+                <!-- Safari iOS Permission Fallback Button -->
+                <div id="camera-error" class="hidden absolute inset-0 z-20">
+                    <!-- JS inserts button here if auto-play is blocked -->
+                </div>
+
+                <!-- Actual Camera Feed -->
+                <div id="reader" class="w-full h-full object-cover"></div>
+                
+                <!-- Scanner Overlay (Targeting Brackets) -->
+                <div class="absolute inset-0 border-[40px] border-slate-900/40 pointer-events-none z-10"></div>
+                <div id="scanner-overlay-box" class="hidden absolute inset-0 pointer-events-none z-20 flex items-center justify-center">
+                    <div class="w-48 h-48 border-2 border-blue-500/50 rounded-xl relative">
+                        <div class="absolute top-0 left-0 w-4 h-4 border-t-2 border-l-2 border-blue-400 -mt-0.5 -ml-0.5 rounded-tl-lg"></div>
+                        <div class="absolute top-0 right-0 w-4 h-4 border-t-2 border-r-2 border-blue-400 -mt-0.5 -mr-0.5 rounded-tr-lg"></div>
+                        <div class="absolute bottom-0 left-0 w-4 h-4 border-b-2 border-l-2 border-blue-400 -mb-0.5 -ml-0.5 rounded-bl-lg"></div>
+                        <div class="absolute bottom-0 right-0 w-4 h-4 border-b-2 border-r-2 border-blue-400 -mb-0.5 -mr-0.5 rounded-br-lg"></div>
+                        <div class="absolute top-0 left-0 w-full h-0.5 bg-blue-500 shadow-[0_0_10px_rgba(59,130,246,1)] scanner-line"></div>
+                    </div>
+                </div>
             </div>
-            <h2 class="text-2xl font-bold mb-2">Office Check-In</h2>
-            <p class="text-slate-400 text-center text-sm mb-12 px-4">Tap the button below to open your camera and scan the HQ QR code.</p>
-            
-            <button id="btn-open-camera" class="w-full max-w-xs py-5 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-bold flex items-center justify-center text-lg shadow-lg shadow-blue-500/30 transition-transform active:scale-95">
-                <i class="ph-bold ph-camera mr-2 text-2xl"></i> Open Camera
-            </button>
+            <p class="text-slate-400 text-center text-xs mt-4 px-4">Point your camera at the HQ QR code.</p>
         </div>
 
-        <!-- Loading View (When saving to Firebase) -->
-        <div id="loading-view" class="hidden flex-1 flex flex-col items-center justify-center">
+        <!-- Weekly Summary List -->
+        <div id="summary-view" class="flex-1 hidden flex-col">
+            <h3 class="text-sm font-bold text-slate-300 mb-3 border-b border-slate-700 pb-2 flex justify-between">
+                <span>Last 7 Days</span>
+                <i class="ph ph-calendar-blank text-slate-500"></i>
+            </h3>
+            <div id="history-list" class="space-y-2 overflow-y-auto pb-4">
+                <!-- JS populates history here -->
+                <div class="text-center text-slate-500 text-xs py-4">Loading history...</div>
+            </div>
+        </div>
+
+        <!-- CHECKOUT CONFIRMATION MODAL -->
+        <div id="checkout-modal" class="hidden absolute inset-0 bg-slate-900/90 z-50 flex items-center justify-center p-6 backdrop-blur-sm">
+            <div class="bg-slate-800 rounded-3xl p-6 w-full max-w-sm border border-slate-700 shadow-2xl text-center">
+                <div class="w-16 h-16 bg-amber-500/20 text-amber-500 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <i class="ph-bold ph-sign-out text-3xl"></i>
+                </div>
+                <h3 class="text-xl font-bold text-white mb-2">Check Out?</h3>
+                <p class="text-slate-400 text-sm mb-6">Are you sure you want to clock out for the day?</p>
+                <div class="flex space-x-3">
+                    <button id="btn-cancel-checkout" class="flex-1 py-3 rounded-xl font-bold text-slate-300 bg-slate-700 hover:bg-slate-600 transition-colors">Cancel</button>
+                    <button id="btn-confirm-checkout" class="flex-1 py-3 rounded-xl font-bold text-white bg-amber-600 hover:bg-amber-700 transition-colors shadow-lg shadow-amber-500/30">Yes, Check Out</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Loading View (Saving to Firebase) -->
+        <div id="loading-view" class="hidden absolute inset-0 bg-slate-900 z-50 flex flex-col items-center justify-center">
             <i class="ph ph-spinner animate-spin text-blue-500 text-6xl mb-4"></i>
             <h2 class="text-xl font-bold">Saving to Cloud...</h2>
-            <p class="text-slate-400 text-sm mt-2">Please wait</p>
         </div>
 
         <!-- Success View -->
-        <div id="success-view" class="hidden flex-1 flex flex-col items-center justify-center">
+        <div id="success-view" class="hidden absolute inset-0 bg-slate-900 z-50 flex flex-col items-center justify-center p-6">
             <div class="w-24 h-24 bg-emerald-500/20 rounded-full flex items-center justify-center mb-6">
                 <i class="ph-fill ph-check-circle text-emerald-500 text-6xl"></i>
             </div>
             <h2 class="text-3xl font-bold mb-2">Success!</h2>
-            <p id="success-message" class="text-slate-400 font-medium text-center">Data saved to Firebase.</p>
-            <button id="btn-close" class="mt-12 py-3 px-8 bg-slate-800 text-white rounded-full font-bold">Close App</button>
+            <p id="success-message" class="text-slate-400 font-medium text-center mb-8">Data saved to Firebase.</p>
+            
+            <div class="bg-slate-800 rounded-2xl p-5 w-full max-w-xs border border-slate-700 space-y-3 mb-8">
+                <div class="flex justify-between items-center pb-3 border-b border-slate-700">
+                    <span class="text-slate-400 text-sm">Action</span>
+                    <span id="result-type" class="font-bold text-white capitalize">Check In</span>
+                </div>
+                <div class="flex justify-between items-center pb-3 border-b border-slate-700">
+                    <span class="text-slate-400 text-sm">Time</span>
+                    <span id="result-time" class="font-bold text-white">00:00 AM</span>
+                </div>
+                <div class="flex justify-between items-center">
+                    <span class="text-slate-400 text-sm">Status</span>
+                    <span id="result-status" class="font-bold text-emerald-400 px-2 py-0.5 bg-emerald-400/10 rounded uppercase text-xs tracking-wider">ON TIME</span>
+                </div>
+            </div>
+
+            <button id="btn-close" class="py-3 px-12 bg-blue-600 hover:bg-blue-700 text-white rounded-full font-bold shadow-lg transition-colors">Done</button>
         </div>
     </div>
 
+    <style>
+        @keyframes scan { 0% { top: 0; } 50% { top: 100%; } 100% { top: 0; } }
+        .scanner-line { animation: scan 2.5s infinite linear; }
+        /* Hide html5-qrcode default UI buttons */
+        #reader__dashboard_section_csr span, #reader__dashboard_section_swaplink { display: none !important; }
+        #reader__dashboard_section_csr button { display: none !important; }
+        #reader__camera_selection { display: none !important; }
+        /* Fix Safari iOS Camera Stretch */
+        #reader video { object-fit: cover !important; width: 100% !important; height: 100% !important; border-radius: 1.5rem !important; }
+    </style>
+
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-        import { getFirestore, collection, addDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+        import { getFirestore, collection, addDoc, query, where, getDocs } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
         // ⚠️ REPLACE WITH YOUR REAL FIREBASE CONFIG AGAIN!
         const firebaseConfig = {
@@ -79,31 +162,26 @@
 
         // 🔒 THE SECRET QR CODE STRING
         const EXPECTED_QR_CODE = "STAFFHUB_HQ_01";
+        const WORK_START_HOUR = 9; // 09:00 AM
 
-        const tg = window.Telegram.WebApp;
-        
-        // 1. MUST call ready() for iOS to properly initialize native components
-        tg.ready(); 
-        tg.expand();
+        // Telegram Logic
+        const tg = window.Telegram?.WebApp || {};
+        if (tg.ready) tg.ready(); 
+        if (tg.expand) tg.expand();
 
-        // 2. Safely get user data (fallback to first_name if username is missing)
-        let isMockUser = false;
         let user = tg.initDataUnsafe?.user;
-        
-        if (!user) {
-            // If user is null, they likely opened a raw web link instead of the bot button
-            user = { username: "desktop_tester", first_name: "Tester" };
-            isMockUser = true;
-        }
+        if (!user) user = { username: "safari_user", first_name: "Safari" }; // Fallback for standard browsers
 
-        // Display name: Use @username if it exists, otherwise use their First Name
-        const displayName = user.username ? `@${user.username}` : (user.first_name || "Unknown");
-        document.getElementById('username-display').innerText = displayName;
-        
-        // Avatar Initial
-        const initial = (user.first_name || user.username || "?").charAt(0).toUpperCase();
-        document.getElementById('avatar-initial').innerText = initial;
+        const userNameId = user.username || user.first_name || "Unknown";
+        document.getElementById('username-display').innerText = user.username ? `@${user.username}` : user.first_name;
+        document.getElementById('avatar-initial').innerText = (user.first_name || user.username || "?").charAt(0).toUpperCase();
 
+        // State variables
+        let pendingAction = 'check-in'; 
+        let isProcessingScan = false;
+        let html5QrCode;
+
+        // --- 1. LIVE CLOCK ---
         function updateClock() {
             const now = new Date();
             document.getElementById('clock').innerText = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -111,87 +189,238 @@
         setInterval(updateClock, 60000);
         updateClock();
 
-        // 3. Open Telegram's Native QR Scanner (iOS fixed)
-        document.getElementById('btn-open-camera').addEventListener('click', () => {
-            const platform = tg.platform || "unknown";
-            
-            // Check if testing on Desktop, Web, or outside of Telegram
-            if (isMockUser || platform === "tdesktop" || platform === "web" || platform === "unknown" || platform === "macos") {
-                 tg.showAlert("Camera scan is only available on the Telegram mobile app. Simulating a successful scan for testing...");
-                 handleValidQR();
-                 return;
-            }
+        // --- 2. FETCH FIREBASE DATA (Determine Action & Build History) ---
+        async function loadUserData() {
+            try {
+                const q = query(collection(db, "scans"), where("name", "==", userNameId));
+                const snapshot = await getDocs(q);
+                
+                let allScans = snapshot.docs.map(doc => doc.data());
+                allScans.sort((a, b) => b.timestamp - a.timestamp); // Newest first
 
-            // Real Camera Scanner for Mobile Phones (iOS & Android)
-            if (tg.showScanQrPopup) {
-                tg.showScanQrPopup({ text: "Scan the official office QR code." }, function(scannedText) {
-                    
-                    // iOS strictness: Always close the scanner first before showing alerts
-                    tg.closeScanQrPopup();
-                    
-                    if (scannedText === EXPECTED_QR_CODE) {
-                        handleValidQR();
-                        return true; // Return true closes the scanner
+                // Determine Today's Action (Check-in or Check-out)
+                const todayStart = new Date();
+                todayStart.setHours(0, 0, 0, 0);
+                const todaysScans = allScans.filter(s => s.timestamp >= todayStart.getTime());
+                
+                const badge = document.getElementById('current-action-badge');
+                if (todaysScans.length > 0) {
+                    const lastScan = todaysScans[0];
+                    if (lastScan.type === 'check-in') {
+                        pendingAction = 'check-out';
+                        badge.innerText = 'CHECK OUT';
+                        badge.className = 'inline-flex items-center px-2 py-1 rounded-md bg-amber-500/20 text-amber-400 font-bold text-xs mt-1';
                     } else {
-                        // Small delay ensures the scanner closes smoothly before the alert pops up
-                        setTimeout(() => {
-                            tg.showAlert("❌ Invalid QR Code! This is not the official HQ QR code.");
-                        }, 300);
-                        return true; 
+                        pendingAction = 'completed';
+                        badge.innerText = 'DONE FOR TODAY';
+                        badge.className = 'inline-flex items-center px-2 py-1 rounded-md bg-emerald-500/20 text-emerald-400 font-bold text-xs mt-1';
                     }
-                });
-            } else {
-                tg.showAlert("QR Scanner is not supported on this device's version of Telegram.");
-            }
-        });
-
-        // 4. Ask user Check In or Check Out after valid scan
-        function handleValidQR() {
-            tg.showPopup({
-                title: 'QR Verified!',
-                message: 'Are you checking IN or checking OUT?',
-                buttons: [
-                    { id: 'check-in', type: 'default', text: 'Check In' },
-                    { id: 'check-out', type: 'destructive', text: 'Check Out' }
-                ]
-            }, function(buttonId) {
-                if (buttonId) {
-                    saveToFirebase(buttonId);
+                } else {
+                    pendingAction = 'check-in';
+                    badge.innerText = 'CHECK IN';
+                    badge.className = 'inline-flex items-center px-2 py-1 rounded-md bg-blue-500/20 text-blue-400 font-bold text-xs mt-1';
                 }
-            });
+
+                // Render History (Last 7 Days)
+                const oneWeekAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
+                const weekScans = allScans.filter(s => s.timestamp >= oneWeekAgo);
+                renderHistory(weekScans);
+                
+            } catch (error) {
+                console.error("Error fetching data:", error);
+                document.getElementById('history-list').innerHTML = `<p class="text-xs text-red-400 text-center">Failed to load history.</p>`;
+            }
         }
 
-        // 5. Save to Firebase
+        function renderHistory(scans) {
+            const list = document.getElementById('history-list');
+            document.getElementById('summary-view').classList.remove('hidden');
+            
+            if (scans.length === 0) {
+                list.innerHTML = `<div class="text-center text-slate-500 text-xs py-4">No scans in the last 7 days.</div>`;
+                return;
+            }
+
+            list.innerHTML = scans.map(scan => {
+                const date = new Date(scan.timestamp);
+                const dateStr = date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+                const isLate = scan.status === 'late';
+                const isCheckIn = scan.type === 'check-in';
+                
+                return `
+                <div class="bg-slate-800 rounded-xl p-3 flex justify-between items-center border border-slate-700">
+                    <div class="flex items-center space-x-3">
+                        <div class="w-8 h-8 rounded-full flex items-center justify-center ${isCheckIn ? 'bg-blue-500/10 text-blue-400' : 'bg-amber-500/10 text-amber-400'}">
+                            <i class="ph-bold ${isCheckIn ? 'ph-sign-in' : 'ph-sign-out'} text-lg"></i>
+                        </div>
+                        <div>
+                            <p class="text-sm font-bold text-slate-200 capitalize">${scan.type.replace('-', ' ')}</p>
+                            <p class="text-[10px] text-slate-400">${dateStr}</p>
+                        </div>
+                    </div>
+                    <div class="text-right">
+                        <p class="text-sm font-bold text-white">${scan.time}</p>
+                        <p class="text-[9px] uppercase tracking-wider font-bold ${isLate ? 'text-amber-400' : 'text-emerald-400'}">${scan.status}</p>
+                    </div>
+                </div>`;
+            }).join('');
+        }
+
+        // --- 3. AUTO-START CAMERA SCANNER ---
+        function startScanner() {
+            document.getElementById('camera-loading').classList.remove('hidden');
+            document.getElementById('camera-error').classList.add('hidden');
+
+            if (!html5QrCode) {
+                html5QrCode = new Html5Qrcode("reader");
+            }
+
+            const config = { fps: 10, qrbox: { width: 250, height: 250 }, aspectRatio: 1.0 };
+            
+            html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess)
+                .then(() => {
+                    document.getElementById('camera-loading').classList.add('hidden');
+                    document.getElementById('scanner-overlay-box').classList.remove('hidden');
+                })
+                .catch((err) => {
+                    console.error("Camera start blocked by browser:", err);
+                    document.getElementById('camera-loading').classList.add('hidden');
+                    document.getElementById('scanner-overlay-box').classList.add('hidden');
+                    
+                    // Safari Fallback Button
+                    const errBox = document.getElementById('camera-error');
+                    errBox.classList.remove('hidden');
+                    errBox.innerHTML = `
+                        <div class="flex flex-col items-center justify-center p-4 bg-slate-800/95 rounded-3xl w-full h-full text-center border-2 border-slate-700">
+                            <i class="ph-fill ph-camera text-slate-400 text-5xl mb-3"></i>
+                            <p class="text-white font-bold mb-1">Camera Standby</p>
+                            <p class="text-slate-400 text-xs mb-6 px-4">Safari requires you to tap a button to allow camera access.</p>
+                            <button id="btn-retry-camera" class="px-6 py-3 bg-blue-600 active:bg-blue-700 text-white rounded-xl font-bold shadow-lg shadow-blue-500/30">Tap to Open Camera</button>
+                        </div>
+                    `;
+                    document.getElementById('btn-retry-camera').addEventListener('click', startScanner);
+                });
+        }
+
+        // --- 4. HANDLE SCAN LOGIC & CHECKOUT MODAL ---
+        function showAlert(msg) {
+            if (tg.showAlert) tg.showAlert(msg);
+            else alert(msg);
+        }
+
+        function onScanSuccess(decodedText) {
+            if (isProcessingScan) return;
+            
+            if (decodedText === EXPECTED_QR_CODE) {
+                isProcessingScan = true;
+                html5QrCode.pause(true); // Pause camera while processing
+                
+                if (pendingAction === 'completed') {
+                    showAlert("You have already checked in and checked out for today!");
+                    isProcessingScan = false;
+                    html5QrCode.resume();
+                    return;
+                }
+
+                if (pendingAction === 'check-out') {
+                    // Trigger Checkout Modal
+                    document.getElementById('checkout-modal').classList.remove('hidden');
+                    return;
+                }
+
+                // If check-in, save immediately
+                saveToFirebase('check-in');
+            } else {
+                isProcessingScan = true;
+                html5QrCode.pause(true);
+                showAlert("❌ Invalid QR Code! This is not the official HQ QR code.");
+                setTimeout(() => {
+                    isProcessingScan = false;
+                    html5QrCode.resume();
+                }, 1500);
+            }
+        }
+
+        // Modal Handlers
+        document.getElementById('btn-cancel-checkout').addEventListener('click', () => {
+            document.getElementById('checkout-modal').classList.add('hidden');
+            isProcessingScan = false;
+            html5QrCode.resume();
+        });
+
+        document.getElementById('btn-confirm-checkout').addEventListener('click', () => {
+            document.getElementById('checkout-modal').classList.add('hidden');
+            saveToFirebase('check-out');
+        });
+
+        // --- 5. SAVE TO FIREBASE & CALCULATE STATUS ---
         async function saveToFirebase(type) {
-            document.getElementById('main-view').classList.add('hidden');
             document.getElementById('loading-view').classList.remove('hidden');
+
+            const now = new Date();
+            const timeStr = document.getElementById('clock').innerText;
+            
+            // Calculate if Late (Only applies to check-ins)
+            let status = "completed"; // Default for checkout
+            if (type === 'check-in') {
+                status = "on-time";
+                const hour = now.getHours();
+                const minute = now.getMinutes();
+                if (hour > WORK_START_HOUR || (hour === WORK_START_HOUR && minute > 0)) {
+                    status = "late";
+                }
+            }
 
             try {
                 await addDoc(collection(db, "scans"), {
-                    // Save username if they have one, otherwise save their real first name
-                    name: user.username || user.first_name || "Unknown",
+                    name: userNameId,
                     firstName: user.first_name || "User",
-                    time: document.getElementById('clock').innerText,
-                    status: "pending", 
+                    time: timeStr,
+                    status: status, 
                     location: "HQ Zone",
                     type: type,
-                    timestamp: Date.now()
+                    timestamp: now.getTime()
                 });
 
+                // Update Success UI
+                document.getElementById('result-type').innerText = type.replace('-', ' ');
+                document.getElementById('result-time').innerText = timeStr;
+                
+                const statusEl = document.getElementById('result-status');
+                statusEl.innerText = status;
+                if (status === 'late') {
+                    statusEl.className = "font-bold text-amber-400 px-2 py-0.5 bg-amber-400/10 rounded uppercase text-xs tracking-wider";
+                } else {
+                    statusEl.className = "font-bold text-emerald-400 px-2 py-0.5 bg-emerald-400/10 rounded uppercase text-xs tracking-wider";
+                }
+
+                // Stop camera and show success
+                html5QrCode.stop();
                 document.getElementById('loading-view').classList.add('hidden');
                 document.getElementById('success-view').classList.remove('hidden');
-                document.getElementById('success-message').innerText = `Your ${type.replace('-', ' ')} was recorded.`;
-                tg.HapticFeedback.notificationOccurred('success');
+                if (tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
                 
             } catch (error) {
                 console.error("Firebase Error:", error);
                 document.getElementById('loading-view').classList.add('hidden');
-                document.getElementById('main-view').classList.remove('hidden');
-                tg.showAlert("Failed to save. Did you update your Firebase Firestore rules to allow writes?");
+                showAlert("Failed to save. Did you update your Firebase Firestore rules to allow writes?");
+                isProcessingScan = false;
+                html5QrCode.resume();
             }
         }
 
-        document.getElementById('btn-close').addEventListener('click', () => tg.close());
+        // Close app button
+        document.getElementById('btn-close').addEventListener('click', () => {
+            if (tg.close) tg.close();
+            else window.location.reload(); // Fallback for Safari
+        });
+
+        // --- INIT ---
+        // Load data first to determine Check-In vs Check-Out, then start camera!
+        loadUserData().then(() => {
+            startScanner();
+        });
+
     </script>
 </body>
 </html>
