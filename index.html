@@ -4,7 +4,20 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     
-    <!-- Anti-Caching Meta Tags to force phones to load the newest version -->
+    <!-- Auto Cache-Buster: Makes the link unique for EVERY access -->
+    <script>
+        (function() {
+            var currentUrl = new URL(window.location.href);
+            // If the URL doesn't have a unique timestamp, add one and reload
+            if (!currentUrl.searchParams.has('t')) {
+                currentUrl.searchParams.set('t', new Date().getTime());
+                // replace() ensures we don't break the Android/iOS back button
+                window.location.replace(currentUrl.toString());
+            }
+        })();
+    </script>
+
+    <!-- Anti-Caching Meta Tags -->
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
