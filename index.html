@@ -118,6 +118,16 @@
             </div>
         </div>
 
+        <!-- Location Verification Loading -->
+        <div id="location-checking-overlay" class="hidden absolute inset-0 bg-slate-900/95 z-50 flex flex-col items-center justify-center p-6">
+            <div class="w-20 h-20 bg-blue-500/20 rounded-full flex items-center justify-center mb-6 relative animate-pulse">
+                <div class="absolute inset-0 border-4 border-blue-500/30 rounded-full animate-ping"></div>
+                <i class="ph-fill ph-map-pin text-blue-500 text-4xl"></i>
+            </div>
+            <h2 className="text-2xl font-bold text-white mb-2">Verifying Location</h2>
+            <p className="text-slate-400 text-sm text-center">Checking if you are within the allowed office radius...</p>
+        </div>
+
         <!-- Loading View (Saving to Firebase) -->
         <div id="loading-view" class="hidden absolute inset-0 bg-slate-900 z-50 flex flex-col items-center justify-center">
             <i class="ph ph-spinner animate-spin text-blue-500 text-6xl mb-4"></i>
@@ -174,14 +184,24 @@
             storageBucket: "staff-hub-app-763bc.firebasestorage.app",
             messagingSenderId: "260622679286",
             appId: "1:260622679286:web:3ecfcad29d872e204300d7"
-        };
+        };;
 
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
 
-        // 🔒 THE SECRET QR CODE STRING
+        // ==========================================
+        // 🔒 SECURITY CONFIGURATION
+        // ==========================================
         const EXPECTED_QR_CODE = "STAFFHUB_HQ_01";
         const WORK_START_HOUR = 9; // 09:00 AM
+        
+        // Change these to your exact office coordinates (Latitude, Longitude)
+        const OFFICE_LOCATION = {
+            lat: 11.5564, // Example: Phnom Penh
+            lng: 104.9282,
+            radius_meters: 100 // Maximum allowed distance from office
+        };
+        // ==========================================
 
         // Telegram Logic
         const tg = window.Telegram?.WebApp || {};
@@ -321,10 +341,84 @@
                 });
         }
 
-        // --- 4. HANDLE SCAN LOGIC & CHECKOUT MODAL ---
+        // --- 4. HANDLE SCAN LOGIC & GPS VERIFICATION ---
         function showAlert(msg) {
             if (tg.showAlert) tg.showAlert(msg);
             else alert(msg);
+        }
+
+        // Calculate distance between two GPS coordinates in meters (Haversine formula)
+        function getDistanceInMeters(lat1, lon1, lat2, lon2) {
+            const R = 6371e3; // Earth radius in meters
+            const rad = Math.PI / 180;
+            const dLat = (lat2 - lat1) * rad;
+            const dLon = (lon2 - lon1) * rad;
+            const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                      Math.cos(lat1 * rad) * Math.cos(lat2 * rad) *
+                      Math.sin(dLon/2) * Math.sin(dLon/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            return R * c; 
+        }
+
+        function verifyLocationAndProceed() {
+            document.getElementById('location-checking-overlay').classList.remove('hidden');
+
+            if (!navigator.geolocation) {
+                document.getElementById('location-checking-overlay').classList.add('hidden');
+                showAlert("Geolocation is not supported by your device. Cannot verify location.");
+                resetScanner();
+                return;
+            }
+
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    const distance = getDistanceInMeters(
+                        position.coords.latitude, 
+                        position.coords.longitude, 
+                        OFFICE_LOCATION.lat, 
+                        OFFICE_LOCATION.lng
+                    );
+
+                    document.getElementById('location-checking-overlay').classList.add('hidden');
+
+                    if (distance <= OFFICE_LOCATION.radius_meters) {
+                        // GPS Validation Passed!
+                        processValidScan();
+                    } else {
+                        // GPS Validation Failed (They are too far away)
+                        showAlert(`❌ Security Alert: You are ${Math.round(distance)} meters away. You must be at the office to check in.`);
+                        resetScanner();
+                    }
+                },
+                (error) => {
+                    document.getElementById('location-checking-overlay').classList.add('hidden');
+                    showAlert("❌ GPS Access Denied. Please enable location permissions in your phone settings to verify your check-in.");
+                    resetScanner();
+                },
+                { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+            );
+        }
+
+        function resetScanner() {
+            setTimeout(() => {
+                isProcessingScan = false;
+                html5QrCode.resume();
+            }, 1000);
+        }
+
+        function processValidScan() {
+            if (pendingAction === 'completed') {
+                showAlert("You have already checked in and checked out for today!");
+                resetScanner();
+                return;
+            }
+
+            if (pendingAction === 'check-out') {
+                document.getElementById('checkout-modal').classList.remove('hidden');
+                return;
+            }
+
+            saveToFirebase('check-in');
         }
 
         function onScanSuccess(decodedText) {
@@ -332,39 +426,23 @@
             
             if (decodedText === EXPECTED_QR_CODE) {
                 isProcessingScan = true;
-                html5QrCode.pause(true); // Pause camera while processing
+                html5QrCode.pause(true); 
                 
-                if (pendingAction === 'completed') {
-                    showAlert("You have already checked in and checked out for today!");
-                    isProcessingScan = false;
-                    html5QrCode.resume();
-                    return;
-                }
-
-                if (pendingAction === 'check-out') {
-                    // Trigger Checkout Modal
-                    document.getElementById('checkout-modal').classList.remove('hidden');
-                    return;
-                }
-
-                // If check-in, save immediately
-                saveToFirebase('check-in');
+                // Triggers the new GPS Geofence Check
+                verifyLocationAndProceed();
+                
             } else {
                 isProcessingScan = true;
                 html5QrCode.pause(true);
                 showAlert("❌ Invalid QR Code! This is not the official HQ QR code.");
-                setTimeout(() => {
-                    isProcessingScan = false;
-                    html5QrCode.resume();
-                }, 1500);
+                resetScanner();
             }
         }
 
         // Modal Handlers
         document.getElementById('btn-cancel-checkout').addEventListener('click', () => {
             document.getElementById('checkout-modal').classList.add('hidden');
-            isProcessingScan = false;
-            html5QrCode.resume();
+            resetScanner();
         });
 
         document.getElementById('btn-confirm-checkout').addEventListener('click', () => {
@@ -423,8 +501,7 @@
                 console.error("Firebase Error:", error);
                 document.getElementById('loading-view').classList.add('hidden');
                 showAlert("Failed to save. Did you update your Firebase Firestore rules to allow writes?");
-                isProcessingScan = false;
-                html5QrCode.resume();
+                resetScanner();
             }
         }
 
